@@ -1,3 +1,7 @@
+# Controle Financeiro
+
+![dashboard arielgiacomini com br](https://github.com/user-attachments/assets/ca8b5992-0be7-4374-a0e7-89de2a32e386)
+
 # React + Vite
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
