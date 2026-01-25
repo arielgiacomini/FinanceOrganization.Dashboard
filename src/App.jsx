@@ -8,7 +8,8 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  LabelList
+  LabelList,
+  Legend
 } from "recharts";
 
 const INTERVALO_ATUALIZACAO = 60000;
@@ -130,16 +131,24 @@ export default function App() {
         label: formatarData(item.date),
         data: new Date(item.date),
         valor: Number(item.valueSpent) || 0,
+        meta: Number(item.targetValue) || 0,
         isCurrentWeek: item.currentWeek
       });
     } else {
       const semanaNum = extrairNumeroSemana(item.weekName);
       let semana = dadosPorMes[item.monthYear].find(s => s.numeroSemana === semanaNum);
       if (!semana) {
-        semana = { numeroSemana: semanaNum, label: item.weekName, valor: 0, isCurrentWeek: false };
+        semana = {
+          numeroSemana: semanaNum,
+          label: item.weekName,
+          valor: 0,
+          meta: 0,
+          isCurrentWeek: false
+        };
         dadosPorMes[item.monthYear].push(semana);
       }
       semana.valor += Number(item.valueSpent) || 0;
+      semana.meta += Number(item.targetValue) || 0;
       if (item.currentWeek) semana.isCurrentWeek = true;
     }
   });
@@ -148,23 +157,30 @@ export default function App() {
     lista.sort((a, b) => modo === "diario" ? a.data - b.data : a.numeroSemana - b.numeroSemana);
   });
 
-  const CustomDot = props => {
-    const { cx, cy, payload } = props;
-    if (cx === undefined || cy === undefined) return null;
+  const CustomDot = ({ cx, cy, payload }) => {
+    if (!cx || !cy) return null;
+
+    const estourouMeta = payload.valor > payload.meta;
+
     return (
-      <circle cx={cx} cy={cy} r={payload.isCurrentWeek ? 7 : 4}
-        fill={payload.isCurrentWeek ? "#fbff00" : "#ff0000"}
-        stroke="#ff0000" strokeWidth={payload.isCurrentWeek ? 2 : 0} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={payload.isCurrentWeek ? 7 : estourouMeta ? 12 : 4 }
+        fill={estourouMeta ? "#ef4444" : "#22c55e"}
+        stroke={payload.isCurrentWeek ? "#facc15" : estourouMeta ? "#ffffff" : "none"}
+        strokeWidth={payload.isCurrentWeek ? 2 : estourouMeta ? 4 : 0}
+      />
     );
   };
 
   /* ===============================
       CÁLCULOS DE KPI (Total e Média)
   =============================== */
-  const { totalGasto, media, projecao } = useMemo(() => {
+  const { totalGasto, media, projecao, meta } = useMemo(() => {
     // 1. Verificamos se 'dados' existe e é uma lista
     if (!Array.isArray(dados) || dados.length === 0) {
-      return { totalGasto: 0, media: 0, projecao: 0 };
+      return { totalGasto: 0, media: 0, projecao: 0, meta: 0 };
     }
 
     // 2. Calculamos o total somando a propriedade valueSpent de cada item
@@ -178,13 +194,19 @@ export default function App() {
     const divisor = modo === "diario" ? dados.length : (dados.length / 7 || 1);
     const avg = total / (divisor || 1);
 
+    const goal = dados.reduce((acc, item) => {
+      const valor = Number(item.targetValue) || 0;
+      return acc + valor;
+    }, 0);
+
     // 4. Projeção simples para o mês (ex: 30 dias)
     const proj = modo === "diario" ? (avg * 30) : (avg * 4);
 
     return {
       totalGasto: total,
       media: avg,
-      projecao: proj
+      projecao: proj,
+      meta: goal
     };
   }, [dados, modo]);
 
@@ -245,21 +267,66 @@ export default function App() {
           <div key={mesAno}
             style={{ margin: 1, backgroundColor: "#ffffffe7" }}>
             <div style={{ width: '100%', height: 400, minWidth: 0 }}>
-              <div style={{ textAlign: "center" }}>
-                <h3>Gastos {modo === "diario" ? "Diários" : "Semanais"} de {mesAno}</h3>
-              </div>
+              <p style={
+                {
+                  textAlign: "center",
+                  fontFamily: "sans-serif",
+                  fontSize: 16,
+                  fontWeight: "bold",
+                  color: '#2d343c',
+                  marginBottom: 10
+                }
+              }>Gastos {modo === "diario" ? "Diários" : "Semanais"} de {mesAno}</p>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={linhas} margin={{ top: 60, right: 80, left: 20, bottom: 40 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
                   <XAxis dataKey="label" stroke="#52525b" tick={{ fontSize: 12 }} />
                   <YAxis stroke="#525253" tick={{ fontSize: 13 }} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #3f3f3f', borderRadius: '12px' }}
-                    formatter={v => `R$ ${v.toFixed(2)} ${v.isCurrentWeek === true ? 'é a Semana Atual' : ''}`}
+                    contentStyle={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid #2d343c',
+                      borderRadius: '12px'
+                    }}
+                    formatter={(value, name) => {
+                      if (name === "Gasto Real") return [`R$ ${value.toFixed(2)}`, "Gasto Real"];
+                      if (name === "Meta") return [`R$ ${value.toFixed(2)}`, "Meta"];
+                      return value;
+                    }}
+                  />
+                  <Legend
+                    verticalAlign="top"
+                    align="center"
+                    iconType="circle"
+                    wrapperStyle={{
+                      paddingBottom: 20,
+                      fontSize: 14,
+                      fontWeight: 600
+                    }}
                   />
                   <Line
                     type="monotone"
+                    dataKey="meta"
+                    name="Meta"
+                    stroke="#22c55e"
+                    strokeWidth={3}
+                    strokeDasharray="6 6"
+                    dot={false}
+                    isAnimationActive={false}
+                  >
+                    {showLabels && (
+                      <LabelList
+                        dataKey="meta"
+                        position="top"
+                        fontSize={12}
+                        stroke="#166534"
+                        formatter={v => modo === "semanal" && v > 0 ? `R$ ${v.toFixed(2).replace(".", ",")}` : ''}
+                      />
+                    )}
+                  </Line>
+                  <Line
+                    type="monotone"
                     dataKey="valor"
+                    name="Gasto Real"
                     stroke="#ef4444"
                     strokeWidth={4}
                     dot={<CustomDot />}
@@ -311,14 +378,14 @@ export default function App() {
                 }}>
                   <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '1px' }}>Total Gasto</h3>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <p style={{ color: 'white', fontSize: '28px', fontWeight: '900', margin: 0 }}>
+                    <p style={{ color: "#ef4444", fontSize: '28px', fontWeight: '900', margin: 0 }}>
                       {totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                     </p>
                     <span style={{ color: '#34d399', fontSize: '24px', fontWeight: 'bold' }}>↑</span>
                   </div>
                 </div>
 
-                {/* Card 2: Média */}
+                {/* Card 2: TotalMeta */}
                 <div style={{
                   backgroundColor: '#2d343c',
                   padding: '25px',
@@ -330,20 +397,23 @@ export default function App() {
                   justifyContent: 'center',
                   minHeight: '150px'
                 }}>
-                  <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '1px' }}>
-                    Média {modo === "diario" ? "Diária" : "Semanal"}
-                  </h3>
-                  <p style={{ color: 'white', fontSize: '28px', fontWeight: '900', margin: 0 }}>
-                    {media.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  <h3 style={
+                    {
+                      color: '#94a3b8',
+                      fontSize: '12px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                      marginBottom: '12px', letterSpacing: '1px'
+                    }}>Meta</h3>
+                  <p style={{ color: "#22c55e", fontSize: '28px', fontWeight: '900', margin: 0 }}>
+                    {meta.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                   </p>
                 </div>
-
               </div>
             </div>
           </div>
         ))
       }
-
       {
         dados.length === 0 && (
           <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800 text-zinc-500">
