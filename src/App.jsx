@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useState, useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -157,21 +158,52 @@ export default function App() {
     );
   };
 
+  /* ===============================
+      CÁLCULOS DE KPI (Total e Média)
+  =============================== */
+  const { totalGasto, media, projecao } = useMemo(() => {
+    // 1. Verificamos se 'dados' existe e é uma lista
+    if (!Array.isArray(dados) || dados.length === 0) {
+      return { totalGasto: 0, media: 0, projecao: 0 };
+    }
+
+    // 2. Calculamos o total somando a propriedade valueSpent de cada item
+    const total = dados.reduce((acc, item) => {
+      const valor = Number(item.valueSpent) || 0;
+      return acc + valor;
+    }, 0);
+
+    // 3. Calculamos a média baseada no modo
+    // Se for diário, divide pelo número de dias retornados. Se semanal, pelo número de semanas.
+    const divisor = modo === "diario" ? dados.length : (dados.length / 7 || 1);
+    const avg = total / (divisor || 1);
+
+    // 4. Projeção simples para o mês (ex: 30 dias)
+    const proj = modo === "diario" ? (avg * 30) : (avg * 4);
+
+    return {
+      totalGasto: total,
+      media: avg,
+      projecao: proj
+    };
+  }, [dados, modo]);
+
   return (
-    <div className="bg-zinc-950 min-h-screen text-white p-6">
+    <div
+      className="bg-zinc-950 min-h-screen text-white p-6">
       {/* HEADER */}
       <div className="flex justify-between items-start mb-10">
         <h1 className="text-4xl font-bold">📊 Controle Financeiro</h1>
         <div className="bg-zinc-900 p-4 rounded-2xl border border-zinc-800 text-sm text-zinc-400">
-          <div>🕒 Última: <span className="text-white font-mono">{formatarHora(ultimaAtualizacao)}</span></div>
-          <div>⏭️ Próxima: <span className="text-green-500 font-mono">{formatarCountdown(tempoRestante)}</span></div>
+          <div>🕒 Última atualização: <span className="text-white font-mono">{formatarHora(ultimaAtualizacao)}</span></div>
+          <div>⏭️ Próxima em: <span className="text-green-500 font-mono">{formatarCountdown(tempoRestante)}</span></div>
         </div>
       </div>
 
       {/* FILTROS */}
       <div className="flex flex-wrap gap-6 mb-10 bg-zinc-900/50 p-6 rounded-2xl border border-zinc-900">
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-500 text-xs uppercase font-bold tracking-widest">Categoria</label>
+          <label className="text-zinc-500 text-xs uppercase font-bold tracking-widest">Categoria: </label>
           <select
             value={categoriaSelecionada}
             onChange={e => setCategoriaSelecionada(e.target.value)}
@@ -182,7 +214,7 @@ export default function App() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-zinc-500 text-xs uppercase font-bold tracking-widest">Período</label>
+          <label className="text-zinc-500 text-xs uppercase font-bold tracking-widest">Mês/Ano: </label>
           <select
             value={mesAnoSelecionado}
             onChange={e => setMesAnoSelecionado(e.target.value)}
@@ -208,54 +240,117 @@ export default function App() {
       </div>
 
       {/* GRÁFICOS */}
-      {Object.entries(dadosPorMes).map(([mesAno, linhas]) => (
-        <div key={mesAno} className="bg-zinc-900 rounded-3xl p-8 mb-14 border border-zinc-800 shadow-xl">
-          <h2 className="text-2xl font-light mb-8">Dados de <span className="font-bold text-white">{mesAno}</span></h2>
+      {
+        Object.entries(dadosPorMes).map(([mesAno, linhas]) => (
+          <div key={mesAno}
+            style={{ margin: 1, backgroundColor: "#ffffffe7" }}>
+            <div style={{ width: '100%', height: 400, minWidth: 0 }}>
+              <div style={{ textAlign: "center" }}>
+                <h3>Gastos {modo === "diario" ? "Diários" : "Semanais"} de {mesAno}</h3>
+              </div>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={linhas} margin={{ top: 60, right: 80, left: 20, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
+                  <XAxis dataKey="label" stroke="#52525b" tick={{ fontSize: 12 }} />
+                  <YAxis stroke="#525253" tick={{ fontSize: 13 }} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#ffffff', border: '1px solid #3f3f3f', borderRadius: '12px' }}
+                    formatter={v => `R$ ${v.toFixed(2)} ${v.isCurrentWeek === true ? 'é a Semana Atual' : ''}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="valor"
+                    stroke="#ef4444"
+                    strokeWidth={4}
+                    dot={<CustomDot />}
+                    isAnimationActive={false}
+                  >
+                    {showLabels && (
+                      <LabelList
+                        dataKey="valor"
+                        position="right"
+                        offset={15}
+                        stroke="#000000"
+                        fontSize={13}
+                        formatter={(v) => v > 0 ? `R$ ${v.toFixed(2).replace(".", ",")}` : ''}
+                      />
+                    )}
+                  </Line>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            {/* SEÇÃO DE KPIS COM CSS INLINE PARA GARANTIR ESTILIZAÇÃO */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              width: '100%',
+              marginBottom: '40px',
+              marginTop: '20px',
+              fontFamily: 'sans-serif'
+            }}>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                gap: '20px',
+                width: '100%',
+                maxWidth: '1100px',
+                padding: '0 20px'
+              }}>
 
-          {/* Ajuste aqui: 
-        1. Definimos uma altura fixa na div pai (h-[400px]) 
-        2. Garantimos que ela tenha min-width: 0 para evitar estouro de container flex 
-    */}
-          <div style={{ width: '100%', height: 400, minWidth: 0 }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={linhas} margin={{ top: 60, right: 30, left: 20, bottom: 40 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" vertical={false} />
-                <XAxis dataKey="label" stroke="#52525b" tick={{ fontSize: 12 }} />
-                <YAxis stroke="#52525b" tick={{ fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#18181b', border: '1px solid #3f3f46', borderRadius: '12px' }}
-                  formatter={v => `R$ ${v.toFixed(2)}`}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="valor"
-                  stroke="#ef4444"
-                  strokeWidth={4}
-                  dot={<CustomDot />}
-                  isAnimationActive={false}
-                >
-                  {showLabels && (
-                    <LabelList
-                      dataKey="valor"
-                      position="right"
-                      offset={15}
-                      stroke="#000000ff"
-                      fontSize={13}
-                      formatter={(v) => v > 0 ? `R$ ${v.toFixed(2).replace(".", ",")}` : ''}
-                    />
-                  )}
-                </Line>
-              </LineChart>
-            </ResponsiveContainer>
+                {/* Card 1: Total Gasto */}
+                <div style={{
+                  backgroundColor: '#2d343c',
+                  padding: '10px',
+                  borderRadius: '24px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '150px'
+                }}>
+                  <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '1px' }}>Total Gasto</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <p style={{ color: 'white', fontSize: '28px', fontWeight: '900', margin: 0 }}>
+                      {totalGasto.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                    </p>
+                    <span style={{ color: '#34d399', fontSize: '24px', fontWeight: 'bold' }}>↑</span>
+                  </div>
+                </div>
+
+                {/* Card 2: Média */}
+                <div style={{
+                  backgroundColor: '#2d343c',
+                  padding: '25px',
+                  borderRadius: '24px',
+                  boxShadow: '0 10px 30px rgba(0,0,0,0.15)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '150px'
+                }}>
+                  <h3 style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '12px', letterSpacing: '1px' }}>
+                    Média {modo === "diario" ? "Diária" : "Semanal"}
+                  </h3>
+                  <p style={{ color: 'white', fontSize: '28px', fontWeight: '900', margin: 0 }}>
+                    {media.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </p>
+                </div>
+
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        ))
+      }
 
-      {dados.length === 0 && (
-        <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800 text-zinc-500">
-          Nenhum dado encontrado para os filtros selecionados.
-        </div>
-      )}
-    </div>
+      {
+        dados.length === 0 && (
+          <div className="text-center py-20 bg-zinc-900/30 rounded-3xl border border-dashed border-zinc-800 text-zinc-500">
+            Nenhum dado encontrado para os filtros selecionados.
+          </div>
+        )
+      }
+    </div >
   );
 }

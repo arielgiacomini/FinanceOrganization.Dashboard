@@ -40,3 +40,12 @@
 .read-the-docs {
   color: #888;
 }
+/* Caso as classes do Tailwind não funcionem, adicione isso ao seu arquivo .css */
+.kpi-card {
+  background-color: #2d343c;
+  border-radius: 20px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  color: rgb(185, 29, 29);
+}
